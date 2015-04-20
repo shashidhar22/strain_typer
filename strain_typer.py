@@ -12,6 +12,7 @@ from Bio import SeqIO
 global relpath
 relpath = os.path.abspath(os.path.dirname(__file__))
 def mol_typer(gene_file, inpfile, outdir):
+    """Module to perform molecular characterization based given set of genes"""
     #create gene index
     fasta_file = SeqIO.parse(open(gene_file),'fasta')
     gene_index = dict()
@@ -45,7 +46,6 @@ def mol_typer(gene_file, inpfile, outdir):
     file_type = detect_type(inpfile)
     run_kan = subprocess.Popen(['count','-d','1','-l','1','-m','dec','--countfilter=kmercount:c>1','-k','11','-f',file_type,'-o',outdir+'/tmp.kc',inpfile], stdout=subprocess.PIPE, shell=False)
     run_kan.wait()
-    #print(len(set(gene_index.values())))
     gene_evidence = dict()
     for lines in csv.reader(open(outdir+'/tmp.kc'),delimiter='\t'):
         if int(lines[0]) in gene_index.keys():
@@ -53,13 +53,12 @@ def mol_typer(gene_file, inpfile, outdir):
                 gene_evidence[gene_index[int(lines[0])]] += 1
             except KeyError:
                 gene_evidence[gene_index[int(lines[0])]]  = 1
-            #print(gene_index[int(lines[0])] +' found in sample')
-    print(gene_evidence)
     os.remove(outdir+'/tmp.kc')
     return
 
         
 def run_mlst(species, inpfile, outdir):
+    """Module to run MLST analysis on input sequences for NM and HI species"""
     MLST = {'NM':[relpath+'/MLST/Neiserria_meningitidis/Profile/neisseria.txt',relpath+'/MLST/Neiserria_meningitidis/Sequences'],
             'HI':[relpath+'/MLST/Haemophillus_influenzae/Profile/hinfluenzae.txt',relpath+'/MLST/Haemophillus_influenzae/Sequences']}
     temp_folder = outdir+'/tmp_fasta'
@@ -79,6 +78,7 @@ def run_mlst(species, inpfile, outdir):
     return
 
 def detect_type(inpfile):
+    """Detect input file type"""
     seqfile = open(inpfile)
     seqline = seqfile.read()
     seqfile.close()
@@ -88,11 +88,13 @@ def detect_type(inpfile):
         return('fastq')
  
 def compare(indir,outdir,loglevel,ref,mode):
+    """Species delineation and MLST analysis"""
     numeric_level = getattr(logging, loglevel.upper(), None)
     if not isinstance(numeric_level, int):
          raise ValueError('Invalid log level: %s' % loglevel)
     logging.basicConfig(level=numeric_level, format='%(levelname)s:%(asctime)s:%(message)s', datefmt='%m/%d/%Y;%I:%M:%S')
     logging.info('Starting strain typing')
+    #Gathering file paths and determining output file names and path
     refiles = glob.glob(os.path.abspath(ref)+'/*kc')
     species = {os.path.basename(fasta): os.path.splitext(os.path.basename(fasta))[0].split('_')[0] for fasta in refiles}
     inpbase = [os.path.basename(fasta) for fasta in indir]
@@ -104,11 +106,13 @@ def compare(indir,outdir,loglevel,ref,mode):
     for files in refiles:
         shutil.copy(files,outdir)
     logging.info('k-merizing '+str(len(basenames))+' files')
+    #Running KAnalyze on all input files; can be parallelized
     for fasta,base in zip(indir,basenames):
         file_type = detect_type(fasta)
         run_kan = subprocess.Popen([relpath+'/kanalyze-0.9.7/count','-d','1','-l','1','--countfilter=kmercount:c>1','-k',klen,'-f',file_type,'-o',outdir+'/'+base+'.kc',fasta], stdout=subprocess.PIPE, shell=False)
         run_kan.wait()
     logging.info('Running Rspecies')
+    #Running Rspecies
     run_rspecies = subprocess.Popen(['Rscript',relpath+'/Rspecies.R',klen,outdir,outdir+'/'],shell=False)
     run_rspecies.wait()
     logging.info('Tree created')
@@ -117,13 +121,12 @@ def compare(indir,outdir,loglevel,ref,mode):
     species_file.writerow(['Assembly','Closest Reference','Predicted Species','Distance to Reference'])
     mlst_classifier = {'NM':[],'HI':[]}
     logging.info('Determining species')
+    #Identifying minimum distance reference
     for values,inpfile in zip(kcbase,indir):
         minimum =1
         minval = int()
         for vals in species.keys():
-            #print(phylo_tree.iloc[vals].name)
-            if phylo_tree[values][vals] < minimum: # and phylo_tree.iloc[vals].name not in inpbase:
-                #phylo_tree[values+'.kc'][vals] != 0.0 and 'SPADES' not in phylo_tree.iloc[vals].name:
+            if phylo_tree[values][vals] < minimum: 
                 minval = vals
                 minimum = phylo_tree[values][vals]
         species_file.writerow([values,minval,species[minval],minimum ])
@@ -132,8 +135,10 @@ def compare(indir,outdir,loglevel,ref,mode):
         except KeyError:
             continue           
     logging.info('Clearing temporary files')
+    #Deleting temporary files
     for kcfiles in glob.glob(outdir+'/*.kc'):
         os.remove(kcfiles)
+    #Running MLST analsyis
     if mode == 'both':
         logging.info('Running MLST analysis')
         for species in mlst_classifier:
