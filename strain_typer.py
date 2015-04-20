@@ -161,4 +161,3 @@ if __name__ == '__main__':
         sys.exit()
 
 #    mol_typer(args.gene,args.indir[0],args.outdir)
->>>>>>> 10f80a8974bf68f6b9b66d1449b0b26b38c5cb63
