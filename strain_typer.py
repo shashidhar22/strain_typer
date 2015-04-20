@@ -2,39 +2,93 @@ import os
 import sys
 import csv
 import glob
+import shutil
 import logging
 import argparse
+import tempfile
 import subprocess
 import pandas
 
-def main(indir,ftype, outdir,loglevel,ref):
+def run_mlst(species, inpfile, outdir):
+    MLST = {'NM':['/home/shashidhar/code_repos/strain_typer/MLST/Neiserria_meningitidis/Profile/neisseria.txt','/home/shashidhar/code_repos/strain_typer/MLST/Neiserria_meningitidis/Sequences'],
+            'HI':['/home/shashidhar/code_repos/strain_typer/MLST/Haemophillus_influenzae/Profile/hinfluenzae.txt','/home/shashidhar/code_repos/strain_typer/MLST/Haemophillus_influenzae/Sequences']}
+    temp_folder = outdir+'/tmp_fasta'
+    os.mkdir(temp_folder)
+    basename = os.path.splitext(os.path.basename(inpfile))[0]
+    shutil.copy(inpfile,temp_folder)
+    run_mlst = subprocess.Popen(['/home/shashidhar/code_repos/strain_typer/run_MLST.py','-i',MLST[species][1],'-g',temp_folder,'-p',MLST[species][0],'--blast_exe','/usr/bin/blastn','-o',outdir+'/MLST'], shell=False)
+    run_mlst.wait()
+    shutil.copy(outdir+'/MLST/MLST.tab',outdir+'/'+basename+'_MLST.tab')
+    for files in glob.glob(temp_folder+'/*'):
+        os.remove(files)
+    os.rmdir(temp_folder)
+    for files in glob.glob(outdir+'/MLST/*'):
+        os.remove(files)
+    os.rmdir(outdir+'/MLST')
+    run_mlst.wait()
+    return
+
+def detect_type(inpfile):
+    seqfile = open(inpfile)
+    seqline = seqfile.read()
+    seqfile.close()
+    if ">" in seqline:
+        return('fasta')
+    else:
+        return('fastq')
+ 
+def typer(refpath, inpfile ,outdir):
+    #make temp directory
+    os.mkdir(outdir)
+    ref_files = glob.glob(refpath+'*.kc')
+    ref_base = [os.path.splitext(os.path.basename(vals))[0] for vals in ref_files]
+    species = {os.path.basename(vals): os.path.splitext(os.path.basename(vals))[0].split('_')[0] for vals in ref_files}
+    temp_dir = os.path.abspath(outdir)+'/tmp_kc'
+    os.mkdir(temp_dir)
+    for files in ref_files:
+        shutil.copy(files,temp_dir)
+    inpbase = os.path.splitext(os.path.basename(inpfile))[0] 
+    file_type = detect_type(inpfile)
+    run_kan = subprocess.Popen(['count','-d','1','-l','1','--countfilter=kmercount:c>1','-k','11','-f',file_type,'-o',temp_dir+'/'+inpbase+'.kc',inpfile], stdout=subprocess.PIPE, shell=False)
+    run_kan.wait()
+    run_species = subprocess.Popen(['Rscript','/home/shashidhar/code_repos/strain_typer/Rspecies.R','11',temp_dir+'/',outdir+'/'],shell=False)
+    run_species.wait()
+    phylo_tree = pandas.read_table(outdir+'/dist.csv',header=0,index_col=0,sep=',',skipinitialspace=True)
+    minimum = 100
+    minval = str()
+    for vals in range(len(phylo_tree[inpbase+'.kc'])):
+        if phylo_tree[inpbase+'.kc'][vals] < minimum and phylo_tree.iloc[vals].name != inpbase+'.kc':
+            print(phylo_tree.iloc[vals].name)
+            minval = phylo_tree.iloc[vals].name
+            minimum = phylo_tree[inpbase+'.kc'][vals]
+    for files in glob.glob(temp_dir+'/*'):
+        os.remove(files)
+    os.rmdir(temp_dir)
+    print(inpbase,minval,species[minval], phylo_tree[inpbase+'.kc'][minval])
+    run_mlst(species[minval],inpfile,outdir)
+    return
+
+def compare(indir,ftype, outdir,loglevel,ref):
     numeric_level = getattr(logging, loglevel.upper(), None)
     if not isinstance(numeric_level, int):
          raise ValueError('Invalid log level: %s' % loglevel)
     logging.basicConfig(level=numeric_level, format='%(levelname)s:%(asctime)s:%(message)s', datefmt='%m/%d/%Y;%I:%M:%S')
     logging.info('Starting strain typing')
-    files = glob.glob(os.path.abspath(ref+'/*fna'))
-    refiles = glob.glob(os.path.abspath(ref+'/*fna'))
-    species = {os.path.splitext(os.path.basename(fasta))[0]: os.path.splitext(os.path.basename(fasta))[0].split('_')[0] for fasta in refiles}
-    files += indir
-    inpbase = [os.path.splitext(os.path.basename(fasta))[0] for fasta in indir]
-    basenames = [os.path.splitext(os.path.basename(fasta))[0] for fasta in files]
+    refiles = glob.glob(os.path.abspath(ref)+'/*kc')
+    species = {os.path.basename(fasta): os.path.splitext(os.path.basename(fasta))[0].split('_')[0] for fasta in refiles}
+    inpbase = [os.path.basename(fasta) for fasta in indir]
+    basenames = [os.path.splitext(os.path.basename(fasta))[0] for fasta in indir]
+    kcbase = [vals+'.kc' for vals in basenames]
     if not os.path.exists(outdir):
         os.mkdir(outdir)
     klen = '11'
+    for files in refiles:
+        shutil.copy(files,outdir)
     logging.info('k-merizing '+str(len(basenames))+' files')
-    for fasta,base in zip(files,basenames):
-#        print(' '.join(['/home/sravishankar9/ComparativeGenomics/kanalyze-0.9.7/count','-d','6','-l','6','--countfilter=kmercount:c>1','-k',klen,'-f',ftype,'-o',outdir+'/'+base+'.kc',fasta]))
-        if fasta in refiles or ftype == 'fasta':
-            run_kan = subprocess.Popen(['count','-d','1','-l','1','--countfilter=kmercount:c>1','-k',klen,'-f','fasta','-o',outdir+'/'+base+'.kc',fasta], stdout=subprocess.PIPE, shell=False)
-            run_kan.wait()
-        elif ftype == 'fastq':
-            run_kan = subprocess.Popen(['count','-d','1','-l','1','--countfilter=kmercount:c>1','-k',klen,'-f','fastq','-o',outdir+'/'+base+'.kc',fasta], stdout=subprocess.PIPE, shell=False)
-            run_kan.wait()
-        else:
-            logging.error('Illegal file type')
-            logging.error('Exiting program')
-            os.exit()
+    for fasta,base in zip(indir,basenames):
+        file_type = detect_type(fasta)
+        run_kan = subprocess.Popen(['count','-d','1','-l','1','--countfilter=kmercount:c>1','-k',klen,'-f',file_type,'-o',outdir+'/'+base+'.kc',fasta], stdout=subprocess.PIPE, shell=False)
+        run_kan.wait()
     logging.info('Running Rspecies')
     run_rspecies = subprocess.Popen(['Rscript','/home/shashidhar/code_repos/strain_typer/Rspecies.R',klen,outdir,outdir+'/'],shell=False)
     run_rspecies.wait()
@@ -42,15 +96,20 @@ def main(indir,ftype, outdir,loglevel,ref):
     phylo_tree = pandas.read_table(outdir+'/dist.csv',header=0,index_col=0,sep=',',skipinitialspace=True)
     species_file = csv.writer(open(outdir+'/species.csv','w'),delimiter='\t')
     species_file.writerow(['Assembly','Closest Reference','Predicted Species','Distance to Reference'])
-    for values in inpbase:
+    for values in kcbase:
         minimum =1
         minval = int()
-        for vals in range(len(phylo_tree[values+'.kc'])):
-            if phylo_tree[values+'.kc'][vals] < minimum and phylo_tree[values+'.kc'][vals] != 0.0 and 'SPADES' not in phylo_tree.iloc[vals].name:
+        for vals in species.keys():
+            #print(phylo_tree.iloc[vals].name)
+            if phylo_tree[values][vals] < minimum: # and phylo_tree.iloc[vals].name not in inpbase:
+                print(vals)
+                #phylo_tree[values+'.kc'][vals] != 0.0 and 'SPADES' not in phylo_tree.iloc[vals].name:
                 minval = vals
-                minimum = phylo_tree[values+'.kc'][vals]
-        print(values,phylo_tree.iloc[minval].name,species[phylo_tree.iloc[minval].name.split('.')[0]], phylo_tree[values+'.kc'][minval])
-        species_file.writerow([values,phylo_tree.iloc[minval].name,species[phylo_tree.iloc[minval].name.split('.')[0]], phylo_tree[values+'.kc'][minval]])
+                minimum = phylo_tree[values][vals]
+        print(values,minval,species[minval], minimum)
+        species_file.writerow([values,minval,species[minval],minimum ])
+    for kcfiles in glob.glob(outdir+'/*.kc'):
+        os.remove(kcfiles)
     logging.info('Analysis done')
     return
       
@@ -63,4 +122,6 @@ if __name__ == '__main__':
     parser.add_argument('-o','--output_dir',dest='outdir',type=str, help='Output directory path')
     parser.add_argument('-l','--log',type=str,default='info',choices=['info','debug','error'],help='Verbosity parameter')
     args = parser.parse_args()
-    main(args.indir, args.ftype,args.outdir,args.log,args.refdir)
+#    compare(args.indir, args.ftype,args.outdir,args.log,args.refdir)
+    typer(args.refdir,args.indir[0],args.outdir)
+#    run_mlst('NM',args.indir[0],args.outdir)
