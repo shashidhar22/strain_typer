@@ -11,6 +11,23 @@ import pandas
 from Bio import SeqIO
 global relpath
 relpath = os.path.abspath(os.path.dirname(__file__))
+
+def gff_parser(gfffile,genelist,outdir):
+    with open(genelist) as gen_list:
+        genes = [vals.strip() for vals in gen_list.readlines()]
+    sero_group  = {'csb':'Nm_serob','csc':'Nm_seroC','csy':'Nm_seroY','csw':'Nm_seroW','csxB':'Nm_seroX','csaB':'Nm_seroA','siaD':'Nm_serob'}
+    outfile = csv.writer(open(outdir+'/moltyping.csv','w'),delimiter='\t')
+    outfile.writerow(['Gene','Status','Serogroup/Serotype'])
+    for gene_name in genes:
+        if gene_name in open(gfffile).read():
+              if gene_name in sero_group.keys():
+                  outfile.writerow([gene_name,'Present',sero_group[gene_name]])
+              else:
+                  outfile.writerow([gene_name,'Present','NA'])
+        else:
+              outfile.writerow([gene_name,'Absent','NA'])
+    return
+
 def mol_typer(gene_file, inpfile, outdir):
     """Module to perform molecular characterization based given set of genes"""
     #create gene index
@@ -38,7 +55,7 @@ def mol_typer(gene_file, inpfile, outdir):
             if bit_counter == 11:   #if length equals k-mer length, store k-mer
                 try:
                     exist = gene_index[kmer & mask]  #k-mer to transcript index mapping
-                    continue 
+                    del gene_index[kmer & mask]
                 except KeyError:
                     gene_index[int(kmer & mask)] = header
             else:
@@ -53,6 +70,8 @@ def mol_typer(gene_file, inpfile, outdir):
                 gene_evidence[gene_index[int(lines[0])]] += 1
             except KeyError:
                 gene_evidence[gene_index[int(lines[0])]]  = 1
+    print(len(set(gene_index.values())))
+    print(len(gene_evidence))
     os.remove(outdir+'/tmp.kc')
     return
 
@@ -82,7 +101,7 @@ def detect_type(inpfile):
     seqfile = open(inpfile)
     seqline = seqfile.read()
     seqfile.close()
-    if ">" in seqline:
+    if ">" == seqline[0]:
         return('fasta')
     else:
         return('fastq')
@@ -107,9 +126,11 @@ def compare(indir,outdir,loglevel,ref,mode):
         shutil.copy(files,outdir)
     logging.info('k-merizing '+str(len(basenames))+' files')
     #Running KAnalyze on all input files; can be parallelized
+    filterval = {'fasta':'1','fastq':'3'}
     for fasta,base in zip(indir,basenames):
         file_type = detect_type(fasta)
-        run_kan = subprocess.Popen([relpath+'/kanalyze-0.9.7/count','-d','1','-l','1','--countfilter=kmercount:c>1','-k',klen,'-f',file_type,'-o',outdir+'/'+base+'.kc',fasta], stdout=subprocess.PIPE, shell=False)
+        print(file_type)
+        run_kan = subprocess.Popen([relpath+'/kanalyze-0.9.7/count','-d','1','-l','1','--countfilter=kmercount:c>'+filterval[file_type],'-k',klen,'-f',file_type,'-o',outdir+'/'+base+'.kc',fasta], stdout=subprocess.PIPE, shell=False)
         run_kan.wait()
     logging.info('Running Rspecies')
     #Running Rspecies
@@ -139,10 +160,14 @@ def compare(indir,outdir,loglevel,ref,mode):
     for kcfiles in glob.glob(outdir+'/*.kc'):
         os.remove(kcfiles)
     #Running MLST analsyis
-    if mode == 'both':
+    if mode == 'both' and file_type == 'fasta':
         logging.info('Running MLST analysis')
         for species in mlst_classifier:
             run_mlst(species,mlst_classifier[species], outdir)
+    else:
+        logging.error('Can\'t run MLST on fastq files')
+        logging.error('Exiting program.')
+        sys.exit()
     logging.info('Analysis done')
     return
       
@@ -153,9 +178,11 @@ if __name__ == '__main__':
     parser.add_argument('-r','--ref_dir',dest='refdir',type=str,help='Path to refrence kc files')
     parser.add_argument('-o','--output_dir',dest='outdir',type=str, help='Output directory path')
     parser.add_argument('-g','--genefile',dest='gene',type=str,help='Molecular typing gene file')
-    parser.add_argument('-m','--mode',dest='mode',type=str,help='Mode of analysis',choices=['species','mlst','both'],default='both')
+    parser.add_argument('-m','--mode',dest='mode',type=str,help='Mode of analysis',choices=['species','mlst','both','anno'],default='both')
     parser.add_argument('-s','--species',dest='species',type=str,help='Species against which MLST needs to be performed. Must be specified in MLST mode')
     parser.add_argument('-l','--log',type=str,default='info',choices=['info','debug','error'],help='Verbosity parameter')
+    parser.add_argument('-a','--annotation',dest='gff',type=str,help='GFF file')
+    parser.add_argument('-e','--genelist',dest='gl',type=str,help='Gene list file')
     args = parser.parse_args()
     if args.mode == 'both' or args.mode == 'species':
         compare(args.indir, args.outdir,args.log,args.refdir,args.mode)
@@ -164,5 +191,6 @@ if __name__ == '__main__':
     elif args.mode == 'mlst' and args.species == None:
         print('Species not specified for MLST analysis. Terminating strain typer.')
         sys.exit()
-
+    elif args.mode == 'anno':
+        gff_parser(args.gff,args.gl,args.outdir)
 #    mol_typer(args.gene,args.indir[0],args.outdir)
