@@ -114,6 +114,10 @@ def compare(indir,outdir,loglevel,ref,mode):
     logging.basicConfig(level=numeric_level, format='%(levelname)s:%(asctime)s:%(message)s', datefmt='%m/%d/%Y;%I:%M:%S')
     logging.info('Starting strain typing')
     #Gathering file paths and determining output file names and path
+    if ref == None:
+        logging.error('Please provide reference files')
+        logging.error('Exiting program')
+        sys.exit()
     refiles = glob.glob(os.path.abspath(ref)+'/*kc')
     species = {os.path.basename(fasta): os.path.splitext(os.path.basename(fasta))[0].split('_')[0] for fasta in refiles}
     inpbase = [os.path.basename(fasta) for fasta in indir]
