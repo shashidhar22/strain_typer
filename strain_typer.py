@@ -129,7 +129,6 @@ def compare(indir,outdir,loglevel,ref,mode):
     filterval = {'fasta':'1','fastq':'3'}
     for fasta,base in zip(indir,basenames):
         file_type = detect_type(fasta)
-        print(file_type)
         run_kan = subprocess.Popen([relpath+'/kanalyze-0.9.7/count','-d','1','-l','1','--countfilter=kmercount:c>'+filterval[file_type],'-k',klen,'-f',file_type,'-o',outdir+'/'+base+'.kc',fasta], stdout=subprocess.PIPE, shell=False)
         run_kan.wait()
     logging.info('Running Rspecies')
