@@ -15,15 +15,15 @@ Leighton Pritchard's bioinformatics toolkit.
 ##Software and Packages:
 1. [KAnalyze](http://sourceforge.net/projects/kanalyze/)
 2. [run_MLST](https://github.com/widdowquinn/scripts)
-3. kmerDistance R package
+3. [kmerDistance](https://github.com/chuang95/kmerDistance)
 
 ##Execution:
 To run strain typer, the strain_typer.py needs to be executed.
 ```python
 python3.4 strain_typer.py -h
 usage: strain_typer [-h] [-i INDIR [INDIR ...]] [-r REFDIR] [-o OUTDIR]
-                    [-g GENE] [-m {species,mlst,both}] [-s SPECIES]
-                    [-l {info,debug,error}]
+                    [-g GENE] [-m {species,mlst,both,anno}] [-s SPECIES]
+                    [-l {info,debug,error}] [-a GFF] [-e GL]
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -42,6 +42,9 @@ optional arguments:
                         be specified in MLST mode
   -l {info,debug,error}, --log {info,debug,error}
                         Verbosity parameter
+  -a GFF, --annotation GFF
+                        GFF file
+  -e GL, --genelist GL  Gene list file
 ```
 
 ##Examples:
