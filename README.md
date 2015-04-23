@@ -16,6 +16,8 @@ Leighton Pritchard's bioinformatics toolkit.
 1. [KAnalyze](http://sourceforge.net/projects/kanalyze/)
 2. [run_MLST](https://github.com/widdowquinn/scripts)
 3. [kmerDistance](https://github.com/chuang95/kmerDistance)
+4. [Biopython](http://biopython.org/wiki/Download)
+5. [Pandas](http://pandas.pydata.org/getpandas.html)
 
 ##Execution:
 To run strain typer, the strain_typer.py needs to be executed.
