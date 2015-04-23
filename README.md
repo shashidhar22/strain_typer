@@ -18,6 +18,7 @@ Leighton Pritchard's bioinformatics toolkit.
 3. [kmerDistance](https://github.com/chuang95/kmerDistance)
 4. [Biopython](http://biopython.org/wiki/Download)
 5. [Pandas](http://pandas.pydata.org/getpandas.html)
+6. [ape](http://cran.r-project.org/web/packages/ape/index.html)
 
 ##Execution:
 To run strain typer, the strain_typer.py needs to be executed.
